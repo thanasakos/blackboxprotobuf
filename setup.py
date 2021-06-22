@@ -9,13 +9,13 @@ req = [x.strip() for x in req if x.strip()]
 
 setuptools.setup(
     name="blackboxprotobuf",
-    version="1.0.1",
-    author="Yogesh Khatri",
-    author_email="yogesh@swiftforensics.com",
+    version="1.0.0",
+    author="Athanasios Andreou, Forked from Yogesh Khatri",
+    author_email="athan.andreou@gmail.com",
     description="Library for reading protobuf buffers without .proto definitions",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/ydkhatri/blackboxprotobuf",
+    url="https://github.com/thanasakos/blackboxprotobuf",
     packages=setuptools.find_packages(),
     install_requires=req,
     classifiers=[
