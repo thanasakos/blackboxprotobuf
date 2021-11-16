@@ -48,7 +48,7 @@ def _get_json_writeable_obj(in_obj, out_obj, bytes_as_hex=False):
             else:
                 out_obj[k] = str(v)
 
-def decode_message(buf, message_type=None):
+def decode_message(buf, message_type=None, timestart=None, timeout_after=10):
     """Decode a message to a Python dictionary.
     Returns tuple of (values, types)
     """
@@ -59,7 +59,7 @@ def decode_message(buf, message_type=None):
         else:
             message_type = known_messages[message_type]
 
-    value, typedef, _ = blackboxprotobuf.lib.types.length_delim.decode_message(buf, message_type)
+    value, typedef, _ = blackboxprotobuf.lib.types.length_delim.decode_message(buf, message_type, timestart=timestart, timeout_after=timeout_after)
     return value, typedef
 
 #TODO add explicit validation of values to message type
@@ -69,10 +69,10 @@ def encode_message(value, message_type):
     """
     return blackboxprotobuf.lib.types.length_delim.encode_message(value, message_type)
 
-def protobuf_to_json(buf, message_type=None, bytes_as_hex=False):
+def protobuf_to_json(buf, message_type=None, bytes_as_hex=False, timestart=None, timeout_after=10):
     """Encode to python dictionary and dump to JSON.
     """
-    value, message_type = decode_message(buf, message_type)
+    value, message_type = decode_message(buf, message_type, timestart, timeout_after)
     value_cleaned = {}
     _get_json_writeable_obj(value, value_cleaned, bytes_as_hex)
     return json.dumps(value_cleaned, indent=2, ensure_ascii=False), message_type

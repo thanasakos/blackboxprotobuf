@@ -1,17 +1,21 @@
 """Module for encoding and decoding length delimited fields"""
 import copy
 import sys
-
+import calendar
+import time
 from google.protobuf.internal import wire_format, encoder, decoder
 
 import blackboxprotobuf.lib.types
 from blackboxprotobuf.lib.types import varint
 
-def decode_guess(buf, pos):
+class ProtobuffDecodeTimeoutException(Exception):
+    pass
+
+def decode_guess(buf, pos, timestart=None, timeout_after=10):
     """Try to decode as an empty message first, then just do as bytes
        Returns the value + the type"""
     try:
-        return decode_lendelim_message(buf, {}, pos), 'message'
+        return decode_lendelim_message(buf, {}, pos, timestart=timestart, timeout_after=timeout_after), 'message'
     except Exception as exc:
         return decode_bytes(buf, pos), 'bytes'
 
@@ -131,8 +135,14 @@ def encode_message(data, typedef, group=False):
 
     return output
 
-def decode_message(buf, typedef=None, pos=0, end=None, group=False):
+def decode_message(buf, typedef=None, pos=0, end=None, group=False, timestart=None, timeout_after=10):
     """Decode a protobuf message with no length delimiter"""
+    if timestart == None:
+        timestart = calendar.timegm(time.gmtime())
+
+    if calendar.timegm(time.gmtime())-timestart > timeout_after:
+        raise ProtobuffDecodeTimeoutException('Timeout in decoding message')
+
     if end is None:
         end = len(buf)
 
@@ -172,7 +182,7 @@ def decode_message(buf, typedef=None, pos=0, end=None, group=False):
         field_out = None
         if field_type is None:
             if wire_type == wire_format.WIRETYPE_LENGTH_DELIMITED:
-                out, field_type = decode_guess(buf, pos)
+                out, field_type = decode_guess(buf, pos, timestart=timestart, timeout_after=timeout_after)
                 if field_type == 'message':
                     field_out, message_typedef, pos = out
                     field_typedef['message_typedef'] = message_typedef
@@ -200,7 +210,7 @@ def decode_message(buf, typedef=None, pos=0, end=None, group=False):
 
                 try:
                     field_out, message_typedef, pos = decode_lendelim_message(
-                        buf, message_typedef, pos)
+                        buf, message_typedef, pos, timestart=timestart, timeout_after=timeout_after)
                     # Save type definition
                     field_typedef['message_typedef'] = message_typedef
                 except Exception as exc:
@@ -213,7 +223,7 @@ def decode_message(buf, typedef=None, pos=0, end=None, group=False):
                     for alt_field_number, alt_typedef in field_typedef['alt_typedefs'].items():
                         try:
                             field_out, message_typedef, pos = decode_lendelim_message(
-                                buf, alt_typedef, pos)
+                                buf, alt_typedef, pos, timestart=timestart, timeout_after=timeout_after)
                         except Exception as exc:
                             pass
 
@@ -225,7 +235,7 @@ def decode_message(buf, typedef=None, pos=0, end=None, group=False):
 
                 if field_out is None:
                     # Still no typedef, try anonymous, and let the error propogate if it fails
-                    field_out, message_typedef, pos = decode_lendelim_message(buf, {}, pos)
+                    field_out, message_typedef, pos = decode_lendelim_message(buf, {}, pos, timestart=timestart, timeout_after=timeout_after)
                     if 'alt_typedefs' in field_typedef:
                         # get the next higher alt field number
                         alt_field_number = str(
@@ -242,7 +252,7 @@ def decode_message(buf, typedef=None, pos=0, end=None, group=False):
                 # Check for a anonymous type
                 if 'group_typedef' in field_typedef:
                     group_typedef = field_typedef['group_typedef']
-                field_out, group_typedef, pos = decode_group(buf, group_typedef, pos)
+                field_out, group_typedef, pos = decode_group(buf, group_typedef, pos, timestart=timestart, timeout_after=timeout_after)
                 # Save type definition
                 field_typedef['group_typedef'] = group_typedef
             else:
@@ -288,10 +298,10 @@ def encode_lendelim_message(data, typedef):
     length = varint.encode_varint(len(message_out))
     return length + message_out
 
-def decode_lendelim_message(buf, typedef=None, pos=0):
+def decode_lendelim_message(buf, typedef=None, pos=0, timestart=None, timeout_after=10):
     """Read in the length and use it as the end"""
     length, pos = varint.decode_varint(buf, pos)
-    ret = decode_message(buf, typedef, pos, pos+length)
+    ret = decode_message(buf, typedef, pos, pos+length, timestart=timestart, timeout_after=timeout_after)
     return ret
 
 # Not actually length delim, but we're hijacking the methods anyway
@@ -304,9 +314,9 @@ def encode_group(value, typedef, field_number):
     output.append(end_tag)
     return output
 
-def decode_group(buf, typedef=None, pos=0, end=None):
+def decode_group(buf, typedef=None, pos=0, end=None, timestart=None, timeout_after=10):
     """Decode a protobuf group type"""
-    return decode_message(buf, typedef, pos, end, group=True)
+    return decode_message(buf, typedef, pos, end, group=True, timestart=timestart, timeout_after=timeout_after)
 
 def generate_packed_encoder(wrapped_encoder):
     """Generate an encoder for a packed type from the base type encoder"""
